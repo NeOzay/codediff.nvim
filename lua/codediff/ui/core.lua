@@ -360,6 +360,150 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
     end
   end
 
+  -- Render moved code indicators (line highlight + number column + aligned annotation)
+  if lines_diff.moves and #lines_diff.moves > 0 then
+    local orig_line_count = vim.api.nvim_buf_line_count(left_bufnr)
+    local mod_line_count = vim.api.nvim_buf_line_count(right_bufnr)
+
+    -- Build a lookup: for each original/modified line, find the change it belongs to
+    local function find_change_for_orig(line)
+      for _, c in ipairs(lines_diff.changes) do
+        if line >= c.original.start_line and line < c.original.end_line then
+          return c
+        end
+      end
+    end
+    local function find_change_for_mod(line)
+      for _, c in ipairs(lines_diff.changes) do
+        if line >= c.modified.start_line and line < c.modified.end_line then
+          return c
+        end
+      end
+    end
+
+    for _, move in ipairs(lines_diff.moves) do
+      local orig_first = move.original.start_line
+      local orig_last = move.original.end_line - 1
+      local mod_first = move.modified.start_line
+      local mod_last = move.modified.end_line - 1
+
+      -- Highlight moved lines on original side with full-line background
+      for line = orig_first, orig_last do
+        if line <= orig_line_count then
+          local sign
+          if line == orig_first and line == orig_last then
+            sign = "─"
+          elseif line == orig_first then
+            sign = "┌"
+          elseif line == orig_last then
+            sign = "└"
+          else
+            sign = "│"
+          end
+
+          -- Range extmark for highlight (matches diff highlight pattern to override it)
+          local line_idx = line - 1
+          pcall(vim.api.nvim_buf_set_extmark, left_bufnr, ns_highlight, line_idx, 0, {
+            end_line = line_idx + 1,
+            end_col = 0,
+            hl_group = "CodeDiffLineMove",
+            hl_eol = true,
+            priority = 250,
+          })
+          -- Separate point extmark for sign + number highlight (no end_line — won't bleed)
+          pcall(vim.api.nvim_buf_set_extmark, left_bufnr, ns_highlight, line_idx, 0, {
+            number_hl_group = "CodeDiffMoveTo",
+            sign_text = sign,
+            sign_hl_group = "CodeDiffMoveTo",
+            priority = 250,
+          })
+        end
+      end
+
+      -- Highlight moved lines on modified side with full-line background
+      for line = mod_first, mod_last do
+        if line <= mod_line_count then
+          local sign
+          if line == mod_first and line == mod_last then
+            sign = "─"
+          elseif line == mod_first then
+            sign = "┌"
+          elseif line == mod_last then
+            sign = "└"
+          else
+            sign = "│"
+          end
+
+          local line_idx = line - 1
+          pcall(vim.api.nvim_buf_set_extmark, right_bufnr, ns_highlight, line_idx, 0, {
+            end_line = line_idx + 1,
+            end_col = 0,
+            hl_group = "CodeDiffLineMove",
+            hl_eol = true,
+            priority = 250,
+          })
+          pcall(vim.api.nvim_buf_set_extmark, right_bufnr, ns_highlight, line_idx, 0, {
+            number_hl_group = "CodeDiffMoveTo",
+            sign_text = sign,
+            sign_hl_group = "CodeDiffMoveTo",
+            priority = 250,
+          })
+        end
+      end
+
+      -- "⇄ moved" virt_line with line range above original moved block + filler on modified side
+      if orig_first <= orig_line_count then
+        local anchor = math.max(orig_first - 1, 0)
+        local label = "⇄ moved: L" .. orig_first .. "-" .. orig_last .. " → L" .. mod_first .. "-" .. mod_last
+        pcall(vim.api.nvim_buf_set_extmark, left_bufnr, ns_highlight, anchor, 0, {
+          virt_lines = { { { label, "CodeDiffMoveTo" } } },
+          virt_lines_above = true,
+          priority = 250,
+        })
+        -- Find the aligned line on the modified side: the change containing this
+        -- original range tells us where the corresponding modified position is
+        local change = find_change_for_orig(orig_first)
+        local filler_anchor
+        if change then
+          -- The modified side of this change is where the deletion appears
+          filler_anchor = math.max(change.modified.start_line - 1, 0)
+        else
+          filler_anchor = math.max(orig_first - 1, 0)
+        end
+        filler_anchor = math.min(filler_anchor, mod_line_count - 1)
+        pcall(vim.api.nvim_buf_set_extmark, right_bufnr, ns_filler, filler_anchor, 0, {
+          virt_lines = { { { string.rep("╱", 500), "CodeDiffFiller" } } },
+          virt_lines_above = true,
+          priority = 250,
+        })
+      end
+
+      -- "⇄ moved" virt_line with line range above modified moved block + filler on original side
+      if mod_first <= mod_line_count then
+        local anchor = math.max(mod_first - 1, 0)
+        local label = "⇄ moved: L" .. orig_first .. "-" .. orig_last .. " → L" .. mod_first .. "-" .. mod_last
+        pcall(vim.api.nvim_buf_set_extmark, right_bufnr, ns_highlight, anchor, 0, {
+          virt_lines = { { { label, "CodeDiffMoveTo" } } },
+          virt_lines_above = true,
+          priority = 250,
+        })
+        local change = find_change_for_mod(mod_first)
+        local filler_anchor
+        if change then
+          filler_anchor = math.max(change.original.start_line - 1, 0)
+        else
+          filler_anchor = math.max(mod_first - 1, 0)
+        end
+        filler_anchor = math.min(filler_anchor, orig_line_count - 1)
+        pcall(vim.api.nvim_buf_set_extmark, left_bufnr, ns_filler, filler_anchor, 0, {
+          virt_lines = { { { string.rep("╱", 500), "CodeDiffFiller" } } },
+          virt_lines_above = true,
+          priority = 250,
+        })
+      end
+    end
+  end
+
   return {
     left_fillers = total_left_fillers,
     right_fillers = total_right_fillers,

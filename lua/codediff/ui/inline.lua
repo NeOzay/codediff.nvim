@@ -136,7 +136,8 @@ end
 -- char_ranges: sorted list of {start_col, end_col} (1-based, byte positions)
 -- syntax_hls: sorted list of {start_col, end_col, hl_group} for this line (optional)
 -- Returns: array of {text, hl_group} chunks suitable for virt_lines
-local function build_highlighted_virt_line(line_text, char_ranges, syntax_hls)
+local function build_highlighted_virt_line(line_text, char_ranges, syntax_hls, base_hl)
+  base_hl = base_hl or "CodeDiffLineDelete"
   -- Build position-to-syntax-hl map for quick lookup
   local syntax_at = {}
   if syntax_hls then
@@ -162,8 +163,8 @@ local function build_highlighted_virt_line(line_text, char_ranges, syntax_hls)
   -- with the same effective highlight
   if #line_text == 0 then
     return {
-      { "", "CodeDiffLineDelete" },
-      { string.rep(" ", 300), "CodeDiffLineDelete" },
+      { "", base_hl },
+      { string.rep(" ", 300), base_hl },
     }
   end
 
@@ -172,7 +173,7 @@ local function build_highlighted_virt_line(line_text, char_ranges, syntax_hls)
   local prev_hl = nil
 
   local function get_hl_at(col)
-    local diff_hl = char_delete_at[col] and "CodeDiffCharDelete" or "CodeDiffLineDelete"
+    local diff_hl = char_delete_at[col] and "CodeDiffCharDelete" or base_hl
     local syn_hl = syntax_at[col]
     if syn_hl then
       return get_merged_hl(syn_hl, diff_hl)
@@ -197,7 +198,7 @@ local function build_highlighted_virt_line(line_text, char_ranges, syntax_hls)
   end
 
   -- Pad for full-width background color (simulates hl_eol for virt_lines)
-  table.insert(chunks, { string.rep(" ", 300), "CodeDiffLineDelete" })
+  table.insert(chunks, { string.rep(" ", 300), base_hl })
 
   return chunks
 end
@@ -424,6 +425,7 @@ function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines
         virt_lines_above = true,
         priority = highlight_priority,
       })
+
     end
 
     -- Step 2: Highlight added/modified lines on the real buffer
@@ -451,6 +453,8 @@ function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines
       apply_modified_char_highlights(bufnr, mapping.inner_changes, modified_lines)
     end
   end
+
+
 end
 
 -- ============================================================================
