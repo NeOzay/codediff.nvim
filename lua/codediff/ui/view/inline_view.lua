@@ -28,6 +28,7 @@ local function compute_and_render_inline(
   local diff_options = {
     max_computation_time_ms = config.options.diff.max_computation_time_ms,
     ignore_trim_whitespace = config.options.diff.ignore_trim_whitespace,
+    compute_moves = config.options.diff.compute_moves,
   }
 
   local lines_diff = diff_module.compute_diff(original_lines, modified_lines, diff_options)
@@ -446,6 +447,7 @@ function M.rerender(tabpage)
   local diff_options = {
     max_computation_time_ms = config.options.diff.max_computation_time_ms,
     ignore_trim_whitespace = config.options.diff.ignore_trim_whitespace,
+    compute_moves = config.options.diff.compute_moves,
   }
 
   local lines_diff = diff_module.compute_diff(original_lines, modified_lines, diff_options)
